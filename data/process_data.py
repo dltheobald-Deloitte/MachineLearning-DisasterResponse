@@ -18,7 +18,7 @@ def load_data(messages_filepath, categories_filepath):
     messages = pd.read_csv(messages_filepath)
 
     #Loading categories dataset
-    categories_filepath = pd.read_csv(messages_filepath)
+    categories_filepath = pd.read_csv(categories_filepath)
 
     #merging together messages and categories dataset
     df_merged = messages.merge(categories_filepath, on = 'id')
