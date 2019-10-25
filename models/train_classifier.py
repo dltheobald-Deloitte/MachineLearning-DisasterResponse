@@ -1,27 +1,179 @@
 import sys
+import pandas as pd
+import re
+import pickle
+
+from sqlalchemy import create_engine
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem.wordnet import WordNetLemmatizer
+
+from sklearn.metrics import classification_report
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+
+#Downloading the required nltk packages
+nltk.download(['punkt','wordnet','stopwords'])
 
 
 def load_data(database_filepath):
-    pass
+    """ Reads in data from a pre-populated sqlite database, splitting them into two sets:
+        - one set of data to be used for feature engineering
+        - one set of data containing the labels for each row.
+   
+    Parameters:
+    database_filepath (string): A string containing the location of the database.
+
+    Returns:
+    X (pandas.DataFrame): A dataframe containing the data before features engineering to train from.
+    y (pandas.DataFrame): A dataframe containing the labels data to train to.
+    category_names (list of String): A list of categories for the labels we are trying to predict.  
+    """
+    #Creating a connection to the sqlite database
+    engine = create_engine('sqlite:///' + database_filepath)
+
+    #Reading in data from the cleaned_messages table
+    df = pd.read_sql( "SELECT * FROM cleaned_messages", con = engine)
+
+    #Allocating data to be used forfeatures or labels
+    X = df.drop(['id', 'genre', 'original'], axis = 1)
+    y = df['genre']
+
+    #Providing category names for the labels
+    category_names = ['direct', 'news', 'social']
+
+    return X, y, category_names
 
 
 def tokenize(text):
-    pass
+    """ Cleans text by removing stopwords and punctuation, making text lowercase and outputs it into
+    a useable format by lemmatizing words.
+   
+    Parameters:
+    text (string): A string containing a full disaster response message.
+
+    Returns:
+    clean_words (list of String): A list containing lemmatized versions of cleaned words in the text, removign stopwords.  
+    """
+    #Replacing all non-alphanumeric characters with spaces
+    text = re.sub(r"[^a-zA-z0-9]",' ',text)
+    
+    #Splitting string into individual words, making them lowercase
+    tokens = word_tokenize(text.lower())
+    
+    #Instatiated objects for processing
+    lemmatizer = WordNetLemmatizer()
+    stop_words = stopwords.words('english')
+    clean_words = []
+
+    #Lemmatizing each word then removing stopwords
+    for word in tokens:
+        if word not in stop_words:
+            token = lemmatizer.lemmatize(word)
+            clean_words.append(token)
+
+    return clean_words
+
+
+def get_messages(frame):
+    """ Filters a dataframe to only give you the 'message' column
+   
+    Parameters:
+    frame (pd.DataFrame): A DataFrame of the data used for creating features.
+
+    Returns:
+    frame (pd.DataFrame): A DataFrame only containing the 'message' column
+    """
+    return frame['message']
+
+
+def remove_messages(frame):
+    """ Filters a dataframe to remove the 'message' column
+   
+    Parameters:
+    frame (pd.DataFrame): A DataFrame of the data used for creating features.
+
+    Returns:
+    frame (pd.DataFrame): A DataFrame of the data used for creating features, less the message column
+    """
+    return frame.drop(['message'], axis=1)
 
 
 def build_model():
-    pass
+    """ Creates an instance of model along with a machine learning pipeline which, when fit,
+    will process the features data and select the best parameters from those given to improve the model outputs.
+
+    Returns:
+    cv (GridSearchCV object): A machine learning pipeline and parameters to configure a model and process
+                              its features 
+    """
+    #Defines pipeline to calculate the tfidf of each message and pass through the categories features.
+    #This pipeline will also trains the classifier
+    pipeline = Pipeline([ 
+    ('features',FeatureUnion([
+        ('nlp_pipeline', Pipeline([
+            ('get_messages', FunctionTransformer(get_messages, validate=False)),
+            ('vect', CountVectorizer(tokenizer=tokenize)),
+            ('tfidf', TfidfTransformer())
+        ])),
+        ('other_pipeline', FunctionTransformer(remove_messages, validate=False))
+    ])),
+    ('clf', RandomForestClassifier())
+    ])
+
+    #A selection of parameters to optimise the model over
+    parameters = {
+    'clf__n_estimators' : [10, 50, 100, 200],
+    'clf__criterion' : ['gini', 'entropy'],
+    'clf__min_samples_split' : [2, 5, 10] 
+    }
+
+    #Creates instance of model with the mentioned pipeline
+    cv = GridSearchCV(pipeline, param_grid = parameters)
+
+    return cv
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
-    pass
+    """ Evaluates and returns the models performance with respect to precision, recall and f1_score
+
+    Parameters:
+    model (GridSearchCV object): A fitted model which can be used to predictr results 
+    X_test (pd.DataFrame): A dataframe with the test set of data to transform into features.
+    Y_test (pd.DataFrame): A dataframe with the test set of data labels.
+    category_names (list of String): A list with the category description of each of the labels
+    """
+    #Prediction outputs from fitted model
+    Y_pred = model.predict(X_test)
+
+    #Comparing predictions to actuals and printing metrics
+    print(classification_report(Y_test, Y_pred, labels = category_names))
 
 
 def save_model(model, model_filepath):
-    pass
+    """ Saves a trained version of the model in the location specified in model_filepath
+
+    Parameters:
+    model (GridSearchCV object): A fitted model which can be used to predict results 
+    model_filepath (String): The location of where the model shoule be saved
+    """
+    #Saving a copy of the fitted model
+    pickle.dump(model, open(model_filepath, 'wb'))
 
 
 def main():
+    """ When this script is run as main, this creates a fitted model which can be used for precictions.
+    It takes in specified system variables are used to exectue the machine learning pipeline:
+        - loading in data
+        - Builing the model
+        - Evaluating the model
+        - Saving the model
+    """
     if len(sys.argv) == 3:
         database_filepath, model_filepath = sys.argv[1:]
         print('Loading data...\n    DATABASE: {}'.format(database_filepath))
