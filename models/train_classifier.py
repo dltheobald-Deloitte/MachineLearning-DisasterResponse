@@ -3,7 +3,7 @@ import pandas as pd
 import re
 import pickle
 
-from sqlalchmeny import create_egine
+from sqlalchemy import create_engine
 
 import nltk
 from nltk.corpus import stopwords
@@ -35,7 +35,7 @@ def load_data(database_filepath):
     category_names (list of String): A list of categories for the labels we are trying to predict.  
     """
     #Creating a connection to the sqlite database
-    engine = create_egine('sqlite:///' + database_filepath)
+    engine = create_engine('sqlite:///' + database_filepath)
 
     #Reading in data from the cleaned_messages table
     df = pd.read_sql( "SELECT * FROM cleaned_messages", con = engine)
@@ -130,7 +130,7 @@ def build_model():
     parameters = {
     'clf__n_estimators' : [10, 50, 100, 200],
     'clf__criterion' : ['gini', 'entropy'],
-    'clf__min_samples_split' : [2, 5, 10]
+    'clf__min_samples_split' : [2, 5, 10] 
     }
 
     #Creates instance of model with the mentioned pipeline
@@ -163,7 +163,7 @@ def save_model(model, model_filepath):
     model_filepath (String): The location of where the model shoule be saved
     """
     #Saving a copy of the fitted model
-    pickle.dump(cv, open(model_filepath, 'wb'))
+    pickle.dump(model, open(model_filepath, 'wb'))
 
 
 def main():
