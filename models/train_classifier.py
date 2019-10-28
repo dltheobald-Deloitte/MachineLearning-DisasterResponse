@@ -13,6 +13,7 @@ from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.metrics import classification_report
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
@@ -32,7 +33,7 @@ def load_data(database_filepath):
     Returns:
     X (pandas.DataFrame): A dataframe containing the data before features engineering to train from.
     y (pandas.DataFrame): A dataframe containing the labels data to train to.
-    category_names (list of String): A list of categories for the labels we are trying to predict.  
+    category_names (list of String): A list of the categories/labels we are trying to predict.  
     """
     #Creating a connection to the sqlite database
     engine = create_engine('sqlite:///' + database_filepath)
@@ -41,11 +42,11 @@ def load_data(database_filepath):
     df = pd.read_sql( "SELECT * FROM cleaned_messages", con = engine)
 
     #Allocating data to be used forfeatures or labels
-    X = df.drop(['id', 'genre', 'original'], axis = 1)
-    y = df['genre']
+    X = df['message']
+    y = df[list(df.columns[4:])]
 
     #Providing category names for the labels
-    category_names = ['direct', 'news', 'social']
+    category_names = df.columns[4:]
 
     return X, y, category_names
 
@@ -80,28 +81,17 @@ def tokenize(text):
     return clean_words
 
 
-def get_messages(frame):
-    """ Filters a dataframe to only give you the 'message' column
+def text_length(messages):
+    """ Transforms the messages in the dataframe into the number of characters in the string
    
     Parameters:
-    frame (pd.DataFrame): A DataFrame of the data used for creating features.
+    messages (pd.DataFrame): A DataFrame of the messages used to train the model
 
     Returns:
-    frame (pd.DataFrame): A DataFrame only containing the 'message' column
+    frame (pd.DataFrame): A DataFrame of the lenght of messages used to train the model
     """
-    return frame['message']
-
-
-def remove_messages(frame):
-    """ Filters a dataframe to remove the 'message' column
-   
-    Parameters:
-    frame (pd.DataFrame): A DataFrame of the data used for creating features.
-
-    Returns:
-    frame (pd.DataFrame): A DataFrame of the data used for creating features, less the message column
-    """
-    return frame.drop(['message'], axis=1)
+    X_data = pd.Series(messages).apply(lambda x: len(x)).astype('int')
+    return pd.DataFrame(X_data)
 
 
 def build_model():
@@ -117,20 +107,18 @@ def build_model():
     pipeline = Pipeline([ 
     ('features',FeatureUnion([
         ('nlp_pipeline', Pipeline([
-            ('get_messages', FunctionTransformer(get_messages, validate=False)),
             ('vect', CountVectorizer(tokenizer=tokenize)),
             ('tfidf', TfidfTransformer())
         ])),
-        ('other_pipeline', FunctionTransformer(remove_messages, validate=False))
+        ('text_length', FunctionTransformer(text_length, validate=False))
     ])),
-    ('clf', RandomForestClassifier())
+    ('clf', MultiOutputClassifier(RandomForestClassifier()))
     ])
 
     #A selection of parameters to optimise the model over
     parameters = {
-    'clf__n_estimators' : [10, 50, 100, 200],
-    'clf__criterion' : ['gini', 'entropy'],
-    'clf__min_samples_split' : [2, 5, 10] 
+    'clf__estimator__n_estimators' : [10, 30, 50],
+    'clf__estimator__min_samples_split' : [2, 10] 
     }
 
     #Creates instance of model with the mentioned pipeline
@@ -146,13 +134,16 @@ def evaluate_model(model, X_test, Y_test, category_names):
     model (GridSearchCV object): A fitted model which can be used to predictr results 
     X_test (pd.DataFrame): A dataframe with the test set of data to transform into features.
     Y_test (pd.DataFrame): A dataframe with the test set of data labels.
-    category_names (list of String): A list with the category description of each of the labels
+    category_names (list of String): A list with the category/label description
     """
     #Prediction outputs from fitted model
     Y_pred = model.predict(X_test)
-
+    Y_pred_df = pd.DataFrame(Y_pred, columns = category_names)
+    
     #Comparing predictions to actuals and printing metrics
-    print(classification_report(Y_test, Y_pred, labels = category_names))
+    for category in category_names:
+        print(category)
+        print(classification_report(Y_test[category], Y_pred_df[category]))
 
 
 def save_model(model, model_filepath):
@@ -163,7 +154,7 @@ def save_model(model, model_filepath):
     model_filepath (String): The location of where the model shoule be saved
     """
     #Saving a copy of the fitted model
-    pickle.dump(model, open(model_filepath, 'wb'))
+    pickle.dump(model, open(model_filepath, 'wb+'))
 
 
 def main():
