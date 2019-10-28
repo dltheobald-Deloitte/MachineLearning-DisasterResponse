@@ -33,7 +33,7 @@ def load_data(database_filepath):
     Returns:
     X (pandas.DataFrame): A dataframe containing the data before features engineering to train from.
     y (pandas.DataFrame): A dataframe containing the labels data to train to.
-    category_names (list of String): A list of categories for the labels we are trying to predict.  
+    category_names (list of String): A list of the categories/labels we are trying to predict.  
     """
     #Creating a connection to the sqlite database
     engine = create_engine('sqlite:///' + database_filepath)
@@ -117,9 +117,8 @@ def build_model():
 
     #A selection of parameters to optimise the model over
     parameters = {
-    'clf__estimator__n_estimators' : [10, 50, 100, 200],
-    'clf__estimator__criterion' : ['gini', 'entropy'],
-    'clf__estimator__min_samples_split' : [2, 5, 10] 
+    'clf__estimator__n_estimators' : [10, 30, 50],
+    'clf__estimator__min_samples_split' : [2, 10] 
     }
 
     #Creates instance of model with the mentioned pipeline
@@ -135,7 +134,7 @@ def evaluate_model(model, X_test, Y_test, category_names):
     model (GridSearchCV object): A fitted model which can be used to predictr results 
     X_test (pd.DataFrame): A dataframe with the test set of data to transform into features.
     Y_test (pd.DataFrame): A dataframe with the test set of data labels.
-    category_names (list of String): A list with the category description of each of the labels
+    category_names (list of String): A list with the category/label description
     """
     #Prediction outputs from fitted model
     Y_pred = model.predict(X_test)
@@ -144,7 +143,7 @@ def evaluate_model(model, X_test, Y_test, category_names):
     #Comparing predictions to actuals and printing metrics
     for category in category_names:
         print(category)
-        print(classification_report(Y_test[category], Y_pred[category]))
+        print(classification_report(Y_test[category], Y_pred_df[category]))
 
 
 def save_model(model, model_filepath):

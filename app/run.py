@@ -52,20 +52,33 @@ def make_graph(data, title, x_label, y_label):
 @app.route('/')
 @app.route('/index')
 def index():
+    """Renders a html template for the home page ('index'). This method also generates Plotly objects
+    and manipulates the data to displays the graphs on the homepage.
+
+    Returns:
+    Returns a rendered template for the homepage for the web_app.
+    """
+    #Instatiating graph list to pass to html
     graphs = []
 
+    #Counting the number of messages for each genre
     genre_counts = df.groupby('genre').count()['message']
     genre_names = list(genre_counts.index)
     
+    #Generating a Bar Graph object and appending to graphs
     graph_1 = make_graph(Bar(x=genre_names,y=genre_counts),
                         'Distribution of Message Genres',
                         'Count', 'Genre')
 
     graphs.append(graph_1)
 
-
-    df_melt = pd.melt(df[list(df.columns[3:])], id_vars = ['genre'], var_name = 'categories', value_name = 'Flag' )
+    #Melting the original dataframe to extract categry information, keeping only message and genre columns
+    df_melt = pd.melt(df[list(df.columns[3:])+['message']],
+                        id_vars = ['genre','message'],
+                        var_name = 'categories',
+                        value_name = 'Flag' )
     
+    #Generating 3 bar graphs traces, one for each genre
     data_test = []
     for genre in genre_names:
         categories_sum = df_melt[df_melt['genre'] == genre].groupby('categories')['Flag'].sum()
@@ -73,22 +86,25 @@ def index():
 
         trace = Bar(name = genre, x=categories, y=categories_sum)
         data_test.append(trace)
+
+    #Making graph object to plot the 3 traces above, appending to graphs
     graph_2 = Figure(data = data_test)
     graph_2.update_layout(barmode = 'group', title ='Number of tags for each Category and Genre',
                             xaxis = {'title': 'Categories'}, yaxis = {'title' : 'No. of Tags'})
 
     graphs.append(graph_2)
 
+    #Calculating the message length
+    df_melt['message_length'] = df_melt['message'].apply(lambda x : len(x))
 
+    #Taking only the assigned labels (i.e FLag > 0) and getting the mean message length for each
+    length_by_category = df_melt[df_melt['Flag'] > 0].groupby('categories')['message_length'].mean()
+    category_names = list(length_by_category.index)
 
-    df['message_length'] = df['message'].apply(lambda x : len(x))
-
-    length_by_genre = df.groupby('genre')['message_length'].mean()
-    genre_names = list(length_by_genre.index)
-
-    graph_3 = make_graph(Bar(x=genre_names,y=length_by_genre),
-                    'Average Message Length by Genre',
-                    'Message Length', 'Genre')             
+    #Making Bar graph object and append to graphs
+    graph_3 = make_graph(Bar(x=category_names,y=length_by_category),
+                    'Average Message Length by Category',
+                    'Message Length', '')             
     
     graphs.append(graph_3)
 
@@ -104,6 +120,12 @@ def index():
 # web page that handles user query and displays model results
 @app.route('/go')
 def go():
+    """Renders a html template to classify a message into categories ('go'). 
+    This method also takes in a message and classifies it for the above.
+
+    Returns:
+    Returns a rendered template for the 'go' page for the web_app.
+    """
     # save user input in query
     query = request.args.get('query', '') 
 
@@ -120,8 +142,10 @@ def go():
 
 
 def main():
-    #app.run(host='0.0.0.1', port=3001, debug=True)
-    app.run(debug = True)
+    """When this script is run as the main script, it runs a flask app on:
+        http://127.0.0.1:5000
+    """
+    app.run(host = '127.0.0.1', port =5000, debug = True)
 
 
 if __name__ == '__main__':
